@@ -1,0 +1,23 @@
+{
+  "name": "reamplifi-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ReAmpliFi: independent read-only control app that works with the AMPLIFi 150 (Web Serial over Bluetooth SPP), with a full in-browser mock amp.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:local": "REAMPLIFI_METADATA=1 vite build",
+    "preview": "vite preview",
+    "gen-metadata": "node ../analysis/protocol-js/tools/gen-metadata.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "alpinejs": "3.17.4",
+    "vite": "8.3.4",
+    "vite-plugin-pwa": "2.0.0"
+  }
+}

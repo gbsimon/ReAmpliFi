@@ -106,8 +106,10 @@ function stripComments(src) {
 test('src/ has no update|flash|dfu|UPDATER identifiers outside guard.js', () => {
   const dir = path.join(PROJECT_ROOT, 'src');
   const hits = [];
-  for (const f of readdirSync(dir)) {
-    if (!f.endsWith('.js') || f === 'guard.js') continue;
+  // recursive: src/transports/ and any later subfolder are scanned too
+  const files = readdirSync(dir, { recursive: true }).map(String).filter((f) => f.endsWith('.js') && f !== 'guard.js');
+  assert.ok(files.includes(path.join('transports', 'webSerial.js')), 'the scan reaches src/transports/');
+  for (const f of files) {
     const code = stripComments(readFileSync(path.join(dir, f), 'utf8'));
     code.split('\n').forEach((line, i) => {
       // identifiers only (string literals are messages, not code paths, but we flag them too)

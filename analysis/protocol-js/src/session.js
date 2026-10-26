@@ -58,7 +58,17 @@ import {
   editorCommandForDeviceSetting,
 } from './mapping.js';
 import { blobToPreset, findSlot, getPresetState, setPresetState, presetToEditorParams } from './presetBlob.js';
-import { AmpProtocolError, RpcStatusError, FirmwareGateError, MappingError } from './errors.js';
+import { AmpProtocolError, RpcStatusError, FirmwareGateError, MappingError, ReadOnlyError } from './errors.js';
+
+/**
+ * Commands a { readOnly: true } session refuses before anything is encoded: param edits, model
+ * loads, tweak/tempo, edit-buffer loads and every storage write. Editor 10 (SetDspModelParam) is
+ * allowed only for the tuner's Enable flag (a live DSP flag, not stored).
+ */
+const READ_ONLY_REFUSED = Object.freeze({
+  editor: new Set([8, 10, 13, 14, 18, 19, 22]),
+  librarian: new Set([9, 12, 13, 15]),
+});
 
 const isAmplifiFamily = (pid) => pid != null && pid - 0x200001 >= 0 && pid - 0x200001 < 7 && ((1 << (pid - 0x200001)) & 0x57) !== 0;
 
@@ -160,7 +170,13 @@ export class Channel {
  * 'deviceSettingChanged' {setting, value, onDevice}, 'presetChanged' {index, onDevice},
  * 'presetSaved' {index, onDevice}, 'tuner' {note, cents, name, value}, 'tunerEnabled' {enabled, onDevice},
  * 'tapTempo' {bpm}, 'fbvStatus' {connected}, 'symbolTable' {bytes, crc, source},
- * 'disconnect' {reason, error?}, 'error' (Error), 'trace' {dir, bytes}.
+ * 'disconnect' {reason, error?}, 'error' (Error), 'trace' {dir, bytes},
+ * 'state' {state} (idle | connecting | connected | disconnecting | disconnected),
+ * 'phase' {phase, …} during connect() (sync, deviceInfo, channel, handshake,
+ *   tableDownload {received, total}, librarian, editBuffer, tuner, ready),
+ * 'command' {service, cmd, name, index?, writesStorage, t} for every request that passed the
+ *   guard (a log that proves which commands were sent),
+ * 'editBuffer' {preset} whenever the edit-buffer mirror was replaced (connect, patch event, load).
  */
 export class AmpSession extends Emitter {
   /**
@@ -175,6 +191,8 @@ export class AmpSession extends Emitter {
    * @param {number} [opts.mtu]                 force the phase-2 MTU instead of the firmware rule
    * @param {number} [opts.requestTimeoutMs]
    * @param {boolean} [opts.closeTransportOnDisconnect=true]
+   * @param {boolean} [opts.readOnly=false]     refuse param edits, preset loads and storage writes
+   *        locally (ReadOnlyError, nothing sent); tuner engage / disengage stays allowed
    */
   constructor(transport, opts = {}) {
     super();
@@ -201,12 +219,22 @@ export class AmpSession extends Emitter {
     this.emit('trace', { dir, bytes });
   }
 
+  _setState(state) {
+    this.state = state;
+    this.emit('state', { state });
+  }
+
+  _phase(phase, detail = {}) {
+    this.emit('phase', { phase, ...detail });
+  }
+
   // -------------------------------------------------------------------------- connect
 
   /** Run the full connect sequence. Resolves with a summary. */
   async connect() {
     if (this.state !== 'idle' && this.state !== 'disconnected') throw new AmpProtocolError(`connect() in state ${this.state}`);
-    this.state = 'connecting';
+    this._failing = false;
+    this._setState('connecting');
     this._unsubData = this.transport.onData((b) => {
       this._trace('rx', b);
       this._channel?.receive(b);
@@ -214,6 +242,7 @@ export class AmpSession extends Emitter {
     this.transport.onClose?.(() => this._onFatal(new AmpProtocolError('transport closed')));
     try {
       // ---- phase 1: device info
+      this._phase('sync');
       this.deviceInfo = await this._readDeviceInfo();
       assertFirmwareSupported(this.deviceInfo.firmwareRevision);
       const params = channelParametersFor(this.deviceInfo);
@@ -221,6 +250,7 @@ export class AmpSession extends Emitter {
       this.channelParams = params;
 
       // ---- phase 2: editor + librarian
+      this._phase('channel', { mtu: params.mtu, timeoutMs: params.timeoutMs });
       const ch = new Channel({ transport: this.transport, clock: this.clock, mtu: params.mtu, onTrace: (d, b) => this._trace(d, b) });
       this._channel = ch;
       await ch.open();
@@ -243,18 +273,21 @@ export class AmpSession extends Emitter {
       });
       this.librarian = new RpcClient({ stream: ls, name: 'librarian', service: 'librarian', clock: this.clock, onError: (e) => this._onFatal(e) });
 
+      this._phase('handshake');
       await this._editorHandshake();
+      this._phase('librarian');
       await this._librarianHandshake();
 
+      this._phase('editBuffer');
       this.dirtyState = (await this._ed(15, () => ed.encodeGetDirtyState())).value;
       await this._refreshEditBuffer();
 
+      this._phase('tuner');
       const tq = await this._ed(9, () => ed.encodeGetDspModelParam(this.symtab.lookup(TUNER.slot), this.symtab.lookup(TUNER.enable)));
       if (tq.status >= 0 && tq.value && tq.value.bits !== 0) {
         await this._registerTunerEvents(true);
         this.tunerEnabled = true;
       }
-      this.state = 'connected';
       const summary = {
         deviceInfo: this.deviceInfo,
         channel: params,
@@ -264,12 +297,16 @@ export class AmpSession extends Emitter {
         symbolTableSource: this.symbolTableSource,
         presetCount: this.presetCount,
         tunerEnabled: this.tunerEnabled,
+        dirtyState: this.dirtyState,
       };
+      this.summary = summary;
+      this._setState('connected');
+      this._phase('ready');
       this.emit('connected', summary);
       return summary;
     } catch (e) {
       await this._teardown();
-      this.state = 'disconnected';
+      this._setState('disconnected');
       throw e;
     }
   }
@@ -281,6 +318,7 @@ export class AmpSession extends Emitter {
     const s = ch.createStream({ local: ADDR.LIBRARIAN_LOCAL, remote: ADDR.LIBRARIAN_REMOTE, timeoutMs: 4000, name: 'deviceinfo' });
     try {
       await s.connect();
+      this._phase('deviceInfo');
       await this._changeMode(s, SERVICE_MODE.DEVICE_INFO);
       const info = parseDeviceInfo(await s.read(DEVICE_INFO_SIZE));
       await s.close();
@@ -317,7 +355,14 @@ export class AmpSession extends Emitter {
     if (!accepted) {
       // choice 3: download the amp's own table (editor cmds 2 and 3)
       const size = (await this._ed(2, () => ed.encodeGetSymbolTableSize())).value;
-      const bytes = (await this._ed(3, () => ed.encodeGetSymbolTable(), { timeoutMs: null })).table;
+      this._phase('tableDownload', { received: 0, total: size });
+      const bytes = (
+        await this._ed(3, () => ed.encodeGetSymbolTable(), {
+          timeoutMs: null,
+          onProgress: ({ received }) => this._phase('tableDownload', { received: Math.min(received, size), total: size }),
+        })
+      ).table;
+      this._phase('tableDownload', { received: bytes.length, total: size });
       if (bytes.length !== size) throw new AmpProtocolError(`downloaded symbol table is ${bytes.length} bytes, expected ${size}`);
       const st = (await this._ed(4, () => ed.encodeHandshake(tableCrc(bytes)))).status;
       if (st < 0) throw new RpcStatusError(`editor Handshake rejected even the amp's own table (status ${st})`, st);
@@ -337,20 +382,43 @@ export class AmpSession extends Emitter {
 
   // -------------------------------------------------------------------------- RPC helpers
 
-  /** Editor request: allow-list check → encode → send → decode. */
-  async _ed(cmdId, encode, { confirmWrite, timeoutMs } = {}) {
+  /** Editor request: allow-list check → read-only check → encode → send → decode. */
+  async _ed(cmdId, encode, { confirmWrite, timeoutMs, onProgress, tunerToggle } = {}) {
     assertCommandAllowed('editor', cmdId, { confirmWrite });
+    this._assertReadOnlyAllows('editor', cmdId, { tunerToggle });
     const info = ed.EDITOR_COMMANDS_BY_ID[cmdId];
-    const body = await this.editor.request(encode(), { timeoutMs: timeoutMs !== undefined ? timeoutMs : (this.opts.requestTimeoutMs ?? info.timeoutMs), label: `editor ${info.name}`, confirmWrite });
+    this._logCommand('editor', cmdId, info, undefined);
+    const body = await this.editor.request(encode(), { timeoutMs: timeoutMs !== undefined ? timeoutMs : (this.opts.requestTimeoutMs ?? info.timeoutMs), label: `editor ${info.name}`, confirmWrite, onProgress });
     return ed.decodeEditorResponse(cmdId, body);
   }
 
-  /** Librarian request: allow-list check → encode → send → decode. */
+  /** Librarian request: allow-list check → read-only check → encode → send → decode. */
   async _lib(cmdId, encode, { index, confirmWrite, timeoutMs } = {}) {
     assertCommandAllowed('librarian', cmdId, { index, confirmWrite });
+    this._assertReadOnlyAllows('librarian', cmdId);
     const info = lib.LIBRARIAN_COMMANDS_BY_ID[cmdId];
+    this._logCommand('librarian', cmdId, info, index);
     const body = await this.librarian.request(encode(), { timeoutMs: timeoutMs !== undefined ? timeoutMs : (this.opts.requestTimeoutMs ?? info.timeoutMs), label: `librarian ${info.name}`, confirmWrite });
     return lib.decodeLibrarianResponse(cmdId, body);
+  }
+
+  _logCommand(service, cmd, info, index) {
+    const w = info.writesStorage;
+    const writesStorage = typeof w === 'function' ? w(index) : !!w;
+    this.emit('command', { service, cmd, name: info.name, ...(index !== undefined ? { index: index >>> 0 } : {}), writesStorage, t: this.clock.now() });
+  }
+
+  _assertReadOnlyAllows(service, cmdId, { tunerToggle = false } = {}) {
+    if (!this.opts.readOnly) return;
+    if (service === 'editor' && cmdId === 10 && tunerToggle) return;
+    if (READ_ONLY_REFUSED[service].has(cmdId)) {
+      throw new ReadOnlyError(`read-only session: refusing ${service} command ${cmdId}; nothing was sent`);
+    }
+  }
+
+  /** Method-level read-only check, before any planning or encoding. */
+  _assertWritable(what) {
+    if (this.opts.readOnly) throw new ReadOnlyError(`read-only session: ${what} is disabled; nothing was sent`);
   }
 
   _requireConnected() {
@@ -387,6 +455,7 @@ export class AmpSession extends Emitter {
       this.editBuffer = null;
       this.emit('error', e);
     }
+    this.emit('editBuffer', { preset: this.editBuffer });
   }
 
   /** Editor-level view of the current tone: { name, groups: { amp: { '@model', Drive, … }, … } }. */
@@ -431,6 +500,7 @@ export class AmpSession extends Emitter {
    */
   async setParam(group, paramId, value, opts = {}) {
     this._requireConnected();
+    this._assertWritable(`setParam ${group}/${paramId}`);
     if (group === 'global' && paramId in PS_KEYS && paramId !== '@tempo') this._fwGate(FW_GATE.PS_KEYS, `global/${paramId}`);
     // guard.js allow-list check BEFORE any bytes are encoded
     assertCommandAllowed('editor', editorCommandForParam(group, paramId), { confirmWrite: opts.confirmWrite });
@@ -486,6 +556,7 @@ export class AmpSession extends Emitter {
    */
   async setDeviceSetting(name, value, opts = {}) {
     this._requireConnected();
+    this._assertWritable(`setDeviceSetting ${name}`);
     const n = DEVICE_SETTING_ALIASES[name] ?? name;
     if (n in SYS_PARAM_KEYS) this._fwGate(FW_GATE.PERSISTENT_SYS_PARAMS, `device setting ${n}`);
     assertCommandAllowed('editor', editorCommandForDeviceSetting(n), { confirmWrite: opts.confirmWrite });
@@ -517,6 +588,7 @@ export class AmpSession extends Emitter {
    */
   async selectPreset(n) {
     this._requireConnected();
+    this._assertWritable(`selectPreset ${n}`);
     const r = AmpSession._ok(await this._lib(11, () => lib.encodeGetPresetFile(n), { index: n }), `GetPresetFile(${n})`);
     await this.writeEditBuffer(r.blob, { emit: false });
     this.currentPresetIndex = n;
@@ -527,6 +599,7 @@ export class AmpSession extends Emitter {
   /** Replace the edit buffer with `blob` (SetPresetFile 0xFFFFFFFF): tone load, model change. */
   async writeEditBuffer(blob, { emit = true } = {}) {
     this._requireConnected();
+    this._assertWritable('writeEditBuffer');
     AmpSession._ok(await this._lib(12, () => lib.encodeSetPresetFile(EDIT_BUFFER, blob), { index: EDIT_BUFFER }), 'SetPresetFile(edit buffer)');
     this._setEditBuffer(blob);
     if (emit) this.emit('presetChanged', { index: null, onDevice: false });
@@ -543,6 +616,7 @@ export class AmpSession extends Emitter {
    */
   async savePreset(n, blob, opts = {}) {
     this._requireConnected();
+    this._assertWritable(`savePreset ${n}`);
     if (n >>> 0 === EDIT_BUFFER) throw new AmpProtocolError('savePreset targets a slot; use writeEditBuffer for the edit buffer');
     AmpSession._ok(await this._lib(12, () => lib.encodeSetPresetFile(n, blob, opts), { index: n, confirmWrite: opts.confirmWrite }), `SetPresetFile(${n})`);
     this.emit('presetSaved', { index: n, onDevice: false });
@@ -551,6 +625,7 @@ export class AmpSession extends Emitter {
   /** Move a preset (cmd 9 {dst, src}). WRITES STORAGE: requires { confirmWrite: true }. Amp semantics INFERRED. */
   async movePreset(dst, src, opts = {}) {
     this._requireConnected();
+    this._assertWritable('movePreset');
     AmpSession._ok(await this._lib(9, () => lib.encodeMovePresetFiles(dst, src, opts), { confirmWrite: opts.confirmWrite }), 'MovePresetFiles');
   }
 
@@ -566,10 +641,18 @@ export class AmpSession extends Emitter {
     return AmpSession._ok(await this._lib(14, () => lib.encodeGetPresetInfo(n)), `GetPresetInfo(${n})`);
   }
 
-  /** Names of all slots. */
-  async getPresetNames() {
+  /**
+   * Names of all slots, read one at a time (one outstanding librarian request, PLAN.md §7).
+   * @param {{onProgress?:(p:{index:number, name:string, done:number, total:number})=>void}} [opts]
+   */
+  async getPresetNames({ onProgress } = {}) {
+    this._requireConnected();
     const out = [];
-    for (let i = 0; i < this.presetCount; i++) out.push(await this.getPresetName(i));
+    for (let i = 0; i < this.presetCount; i++) {
+      const name = await this.getPresetName(i);
+      out.push(name);
+      onProgress?.({ index: i, name, done: i + 1, total: this.presetCount });
+    }
     return out;
   }
 
@@ -581,7 +664,7 @@ export class AmpSession extends Emitter {
     const slot = this.symtab.lookup(TUNER.slot);
     const enable = this.symtab.lookup(TUNER.enable);
     // L6Variant(uint) → TV int, not bool; synchronous
-    AmpSession._ok(await this._ed(10, () => ed.encodeSetDspModelParam(slot, enable, tvInt(on ? 1 : 0))), 'tuner enable');
+    AmpSession._ok(await this._ed(10, () => ed.encodeSetDspModelParam(slot, enable, tvInt(on ? 1 : 0)), { tunerToggle: true }), 'tuner enable');
     await this._registerTunerEvents(on);
     this.tunerEnabled = !!on;
     this.emit('tunerEnabled', { enabled: !!on, onDevice: false });
@@ -685,10 +768,13 @@ export class AmpSession extends Emitter {
   // -------------------------------------------------------------------------- teardown
 
   _onFatal(err) {
-    if (this.state === 'disconnected' || this.state === 'disconnecting') return;
+    if (this.state === 'disconnected' || this.state === 'disconnecting' || this._failing) return;
+    // both streams usually fail together (e.g. heartbeat timeout): report the loss once
+    this._failing = true;
     const wasConnected = this.state === 'connected';
+    if (wasConnected) this._setState('disconnecting');
     this._teardown().then(() => {
-      this.state = 'disconnected';
+      this._setState('disconnected');
       if (wasConnected) this.emit('disconnect', { reason: 'error', error: err });
     });
   }
@@ -717,9 +803,9 @@ export class AmpSession extends Emitter {
   /** Graceful disconnect: FIN both streams, IAP x STOP, stop RSMC, close the transport. */
   async disconnect() {
     if (this.state !== 'connected') return;
-    this.state = 'disconnecting';
+    this._setState('disconnecting');
     await this._teardown({ graceful: true });
-    this.state = 'disconnected';
+    this._setState('disconnected');
     this.emit('disconnect', { reason: 'user' });
   }
 }

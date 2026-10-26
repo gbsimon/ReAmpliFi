@@ -13,6 +13,14 @@ default_preset*.json
 Demo.zip
 *.mp3
 
+# Metadata generated from your own APK by analysis/protocol-js/tools/gen-metadata.js
+# (derived from Line 6 files: local only, never commit)
+app/src/generated/
+
+# App build output
+app/dist/
+app/dev-dist/
+
 # Tooling
 __pycache__/
 *.pyc

@@ -6,10 +6,12 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
-    "./mock": "./mock/index.js"
+    "./mock": "./mock/index.js",
+    "./transports/webSerial": "./src/transports/webSerial.js"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "gen-metadata": "node tools/gen-metadata.js"
   },
   "engines": {
     "node": ">=20"

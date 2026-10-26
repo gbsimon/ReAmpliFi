@@ -56,3 +56,10 @@ export class MappingError extends AmpProtocolError {
     super(message, NATIVE_ERR.PROTOCOL);
   }
 }
+
+/**
+ * The session was opened with { readOnly: true } and a command that changes the amp's state
+ * (a param edit, a preset load or any storage write) was requested. Nothing was sent.
+ * Tuner engage / disengage is the one live change a read-only session allows.
+ */
+export class ReadOnlyError extends AmpProtocolError {}

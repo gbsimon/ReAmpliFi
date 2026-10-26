@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>ReAmpliFi</title>
+    <meta name="description" content="ReAmpliFi: an independent, read-only remote that works with the AMPLIFi 150 over Bluetooth (Web Serial). Not affiliated with Line 6." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#0f766e" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+  </head>
+  <body>
+    <div class="app" :class="{ 'drawer-open': amp.ui.logOpen }" x-data="app" x-cloak>
+      <a class="skip" href="#main">Skip to content</a>
+
+      <header class="topbar">
+        <div class="brand">
+          <img src="./icon.svg" alt="" width="28" height="28" />
+          <div>
+            <h1>ReAmpliFi</h1>
+            <p class="tagline">Works with AMPLIFi 150 · read-only (P1)</p>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <span class="badge" :class="amp.mode === 'mock' ? 'badge-mock' : 'badge-serial'" x-text="amp.mode === 'mock' ? 'Mock amp' : 'Web Serial'"></span>
+          <span class="status-pill" :data-state="amp.connection" role="status" aria-live="polite">
+            <span class="dot" aria-hidden="true"></span><span x-text="statusText"></span>
+          </span>
+          <button type="button" class="btn btn-ghost" @click="toggleLog()" :aria-expanded="amp.ui.logOpen.toString()" aria-controls="log-drawer">Log</button>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="Sections">
+        <template x-for="t in tabs" :key="t.id">
+          <a :href="'#' + t.id" class="tab" :aria-current="amp.ui.tab === t.id ? 'page' : null" x-text="t.label"></a>
+        </template>
+      </nav>
+
+      <main id="main" tabindex="-1">
+        <!-- ============================================================ CONNECT -->
+        <section x-show="amp.ui.tab === 'connect'" aria-labelledby="h-connect" class="panel">
+          <h2 id="h-connect">Connect</h2>
+
+          <template x-if="!amp.support.supported">
+            <div class="callout callout-error" role="alert">
+              <strong>Web Serial is not available.</strong>
+              <p x-text="amp.support.message"></p>
+              <p>You can still try the whole app against the built-in mock amp.</p>
+              <button type="button" class="btn" @click="switchMode()">Open mock mode</button>
+            </div>
+          </template>
+
+          <template x-if="amp.support.supported && amp.mode === 'serial'">
+            <div class="callout">
+              <p><strong>Before you connect:</strong> pair the amp in your OS Bluetooth settings, and make sure no phone is connected to it with the official app (the amp may accept only one remote).</p>
+              <p class="muted">Chrome or Edge on desktop (130+ recommended), or Chrome 138+ on Android. The browser dialog lists only paired devices.</p>
+            </div>
+          </template>
+          <template x-if="amp.mode === 'mock'">
+            <div class="callout callout-mock">
+              <p><strong>Mock mode.</strong> A software amp runs in this page over an in-memory link with the same timing as the real Bluetooth link (about one frame every 200 ms), so a connect takes 15–20 s. Fault injection is on the <a href="#mock">Mock amp</a> tab.</p>
+            </div>
+          </template>
+
+          <div class="actions">
+            <button type="button" class="btn btn-primary" @click="connect()" :disabled="!amp.support.supported || busy || ready" x-text="amp.mode === 'mock' ? 'Connect to mock amp' : 'Connect…'"></button>
+            <template x-for="(p, i) in amp.rememberedPorts" :key="i">
+              <button type="button" class="btn" @click="reconnect(i)" :disabled="busy || ready" x-text="'Reconnect: ' + p.label"></button>
+            </template>
+            <button type="button" class="btn" @click="disconnect()" :disabled="!ready && amp.connection !== 'lost'" x-show="ready || amp.connection === 'lost'">Disconnect</button>
+          </div>
+
+          <ol class="stepper" aria-label="Connection progress">
+            <template x-for="step in steps" :key="step.id">
+              <li :data-state="stepState(step)">
+                <span class="step-dot" aria-hidden="true"></span>
+                <span class="step-label" x-text="step.label"></span>
+                <span class="sr-only" x-text="'(' + stepState(step) + ')'"></span>
+              </li>
+            </template>
+          </ol>
+
+          <template x-if="amp.tableDownload">
+            <div class="progress-block">
+              <label for="table-progress">Downloading the amp’s symbol table: <span x-text="amp.tableDownload.received"></span> / <span x-text="amp.tableDownload.total"></span> bytes</label>
+              <progress id="table-progress" max="100" :value="downloadPercent" x-text="downloadPercent + '%'"></progress>
+              <p class="muted">Only on the first connect: the table is cached in this browser afterwards (real amp only).</p>
+            </div>
+          </template>
+
+          <template x-if="amp.error">
+            <div class="callout callout-error" role="alert">
+              <strong x-text="amp.error.message"></strong>
+              <p x-show="amp.error.hint" x-text="amp.error.hint"></p>
+            </div>
+          </template>
+
+          <dl class="facts" x-show="ready">
+            <div><dt>Amp</dt><dd x-text="amp.deviceInfo?.productName"></dd></div>
+            <div><dt>Firmware</dt><dd x-text="amp.deviceInfo?.firmwareString"></dd></div>
+            <div><dt>Presets</dt><dd x-text="amp.presetCount"></dd></div>
+            <div><dt>Current tone</dt><dd x-text="amp.editBuffer?.name ?? '—'"></dd></div>
+          </dl>
+
+          <p class="muted small">
+            ReAmpliFi is independent and not affiliated with or endorsed by Line 6 or Yamaha. It never updates, flashes or opens the amp’s firmware-update mode: those paths are refused in code.
+            Commands sent this session: <span x-text="amp.commands.total"></span>, storage writes: <strong x-text="amp.commands.storageWrites"></strong>.
+          </p>
+        </section>
+
+        <!-- ============================================================ DEVICE -->
+        <section x-show="amp.ui.tab === 'device'" aria-labelledby="h-device" class="panel">
+          <h2 id="h-device">Device</h2>
+          <template x-if="!amp.deviceInfo">
+            <p class="empty">Connect to see the amp’s details.</p>
+          </template>
+          <template x-if="amp.deviceInfo">
+            <div class="grid-2">
+              <div class="card">
+                <h3>Amp</h3>
+                <dl class="kv">
+                  <dt>Product</dt><dd x-text="amp.deviceInfo.productName"></dd>
+                  <dt>Model</dt><dd x-text="amp.deviceInfo.model"></dd>
+                  <dt>Serial number</dt><dd class="mono" x-text="amp.deviceInfo.serialNumber || '—'"></dd>
+                  <dt>Firmware</dt><dd><span x-text="amp.deviceInfo.firmwareString"></span> <span class="mono muted" x-text="'raw ' + hex32(amp.deviceInfo.firmwareRevision)"></span></dd>
+                  <dt>Version (packed)</dt><dd class="mono" x-text="hex32(amp.deviceInfo.correctedVersion)"></dd>
+                  <dt>Product id</dt><dd class="mono" x-text="amp.deviceInfo.productId === null ? 'unknown' : hex32(amp.deviceInfo.productId)"></dd>
+                </dl>
+              </div>
+              <div class="card">
+                <h3>Link and protocol</h3>
+                <dl class="kv">
+                  <dt>Symbol table</dt><dd><span x-text="amp.symbolTable.source ?? '—'"></span> <span class="muted" x-show="amp.symbolTable.source === 'downloaded'">(from the amp)</span><span class="muted" x-show="amp.symbolTable.source === 'cached'">(saved from an earlier download)</span><span class="muted" x-show="amp.symbolTable.source === 'bundled'">(bundled CRC accepted)</span></dd>
+                  <dt>Table CRC-32</dt><dd class="mono" x-text="hex32(amp.symbolTable.crc)"></dd>
+                  <dt>Table size</dt><dd x-text="amp.symbolTable.size ? amp.symbolTable.size + ' bytes' : '—'"></dd>
+                  <dt>MTU</dt><dd x-text="amp.channel?.mtu + ' bytes'"></dd>
+                  <dt>Stream timeout</dt><dd x-text="amp.channel ? amp.channel.timeoutMs / 1000 + ' s (heartbeat every ' + amp.channel.heartbeatMs / 1000 + ' s)' : '—'"></dd>
+                  <dt>Editor / librarian</dt><dd x-text="'v' + amp.versions.editor + ' / v' + amp.versions.librarian"></dd>
+                  <dt>Edit buffer at connect</dt><dd x-text="amp.dirty === null ? '—' : amp.dirty ? 'modified (unsaved changes on the amp)' : 'unmodified'"></dd>
+                  <dt>Master volume</dt><dd x-text="amp.deviceSettings.Master === undefined ? 'not reported yet' : amp.deviceSettings.Master.toFixed(2)"></dd>
+                  <dt>FBV pedal</dt><dd x-text="amp.fbvConnected === null ? '—' : amp.fbvConnected ? 'connected' : 'not connected'"></dd>
+                  <dt>Commands sent</dt><dd><span x-text="amp.commands.total"></span>, storage writes <strong x-text="amp.commands.storageWrites"></strong></dd>
+                </dl>
+              </div>
+            </div>
+          </template>
+        </section>
+
+        <!-- ============================================================ TONE -->
+        <section x-show="amp.ui.tab === 'tone'" aria-labelledby="h-tone" class="panel">
+          <div class="panel-head">
+            <h2 id="h-tone">Tone <span class="muted" x-show="amp.editBuffer" x-text="'· ' + (amp.editBuffer?.name ?? '')"></span></h2>
+            <p class="muted small">Read-only view of the amp’s edit buffer. It follows knob turns on the amp and re-reads after a preset change. Editing arrives in P2.</p>
+          </div>
+          <template x-if="!amp.metadata.present">
+            <p class="callout small">No model metadata: showing raw model symbols and 0–1 ranges. Generate it from your own copy of the official app (see README).</p>
+          </template>
+          <template x-if="!amp.editBuffer">
+            <p class="empty">Connect to read the current tone.</p>
+          </template>
+          <div class="blocks" x-show="amp.editBuffer">
+            <template x-for="b in blocks" :key="b.group">
+              <article class="block" :class="{ 'block-off': b.enabled === false, 'block-absent': !b.present, hot: isHot(b.group, '@enabled') }" :aria-label="b.label + ': ' + b.model.name">
+                <header class="block-head">
+                  <div>
+                    <h3 x-text="b.label"></h3>
+                    <p class="model">
+                      <span x-text="b.model.name"></span>
+                      <span class="muted mono small" x-show="b.model.known && b.model.symbol !== b.model.name" x-text="b.model.symbol"></span>
+                    </p>
+                    <p class="muted small" x-show="b.model.kind || b.model.category" x-text="[b.model.kind, b.model.category].filter(Boolean).join(' · ')"></p>
+                  </div>
+                  <span class="onoff" x-show="b.enabled !== null" :data-on="b.enabled ? 'true' : 'false'" x-text="b.enabled ? 'On' : 'Off'"></span>
+                </header>
+                <ul class="params">
+                  <template x-for="p in b.params" :key="p.id">
+                    <li class="param" :class="{ hot: isHot(b.group, p.id) }">
+                      <template x-if="p.kind !== 'bool' && p.fraction !== null">
+                        <svg class="knob" viewBox="0 0 48 48" role="meter" :aria-label="p.name" :aria-valuemin="p.min" :aria-valuemax="p.max" :aria-valuenow="p.value" :aria-valuetext="p.display">
+                          <path class="knob-track" :d="arcPath(1)" />
+                          <path class="knob-value" :d="arcPath(p.fraction)" />
+                        </svg>
+                      </template>
+                      <template x-if="p.kind === 'bool' || p.fraction === null">
+                        <span class="knob-flag" :data-on="p.value ? 'true' : 'false'" aria-hidden="true"></span>
+                      </template>
+                      <span class="param-name" x-text="p.name"></span>
+                      <span class="param-value mono" x-text="p.display"></span>
+                    </li>
+                  </template>
+                </ul>
+              </article>
+            </template>
+          </div>
+        </section>
+
+        <!-- ============================================================ PRESETS -->
+        <section x-show="amp.ui.tab === 'presets'" aria-labelledby="h-presets" class="panel">
+          <div class="panel-head">
+            <h2 id="h-presets">Presets</h2>
+            <p class="muted small">Names as stored on the amp, in banks of 4. The current preset is known only after the amp reports a preset change (turn the preset knob). Selecting from the app is <strong>coming in P3</strong>.</p>
+          </div>
+          <template x-if="amp.presetsLoading">
+            <div class="progress-block">
+              <label for="preset-progress">Reading names: <span x-text="amp.presetsLoading.done"></span> / <span x-text="amp.presetsLoading.total"></span></label>
+              <progress id="preset-progress" :max="amp.presetsLoading.total" :value="amp.presetsLoading.done"></progress>
+            </div>
+          </template>
+          <template x-if="!amp.presets.length && !amp.presetsLoading">
+            <p class="empty">Connect to read the preset list.</p>
+          </template>
+          <p class="muted small" x-show="ready && amp.currentPresetIndex === null">Current preset: unknown until the amp reports a change.</p>
+          <div class="banks">
+            <template x-for="bank in banks" :key="bank.bank">
+              <section class="bank" :aria-label="'Bank ' + bank.bank">
+                <h3 x-text="'Bank ' + bank.bank"></h3>
+                <ol class="preset-list">
+                  <template x-for="p in bank.presets" :key="p.index">
+                    <li class="preset" :class="{ current: isCurrentPreset(p) }" :aria-current="isCurrentPreset(p) ? 'true' : null">
+                      <span class="preset-slot mono" x-text="presetLabel(p.index)"></span>
+                      <span class="preset-name" x-text="p.name || '(empty name)'"></span>
+                      <button type="button" class="btn btn-small" disabled title="Selecting presets from the app is coming in P3" aria-label="Select (coming in P3)">Select</button>
+                    </li>
+                  </template>
+                </ol>
+              </section>
+            </template>
+          </div>
+          <div class="actions" x-show="ready">
+            <button type="button" class="btn" @click="reloadPresets()" :disabled="!!amp.presetsLoading">Re-read names</button>
+          </div>
+        </section>
+
+        <!-- ============================================================ TUNER -->
+        <section x-show="amp.ui.tab === 'tuner'" aria-labelledby="h-tuner" class="panel">
+          <h2 id="h-tuner">Tuner</h2>
+          <div class="tuner" :class="{ 'in-tune': tunerInTune, off: !amp.tuner.enabled }">
+            <svg viewBox="-100 -100 200 112" class="tuner-dial" aria-hidden="true">
+              <path class="tuner-arc" d="M -65.05 -65.05 A 92 92 0 0 1 65.05 -65.05" />
+              <path class="tuner-zone" d="M -6.02 -91.8 A 92 92 0 0 1 6.02 -91.8" />
+              <g class="tuner-ticks">
+                <line x1="0" y1="-92" x2="0" y2="-76" />
+                <line x1="-65.05" y1="-65.05" x2="-56.6" y2="-56.6" />
+                <line x1="65.05" y1="-65.05" x2="56.6" y2="-56.6" />
+                <line x1="-35.2" y1="-85" x2="-31.4" y2="-75.8" />
+                <line x1="35.2" y1="-85" x2="31.4" y2="-75.8" />
+              </g>
+              <text x="-72" y="8" class="tuner-scale">−50</text>
+              <text x="72" y="8" class="tuner-scale" text-anchor="end">+50</text>
+              <line class="tuner-needle" x1="0" y1="0" x2="0" y2="-86" :transform="'rotate(' + tunerNeedle + ')'" />
+              <circle r="6" class="tuner-hub" />
+            </svg>
+            <div class="tuner-readout">
+              <p class="tuner-note" x-text="amp.tuner.enabled ? (amp.tuner.note >= 0 ? amp.tuner.name : '—') : 'Off'"></p>
+              <p class="tuner-cents mono" x-text="amp.tuner.enabled && amp.tuner.note >= 0 ? (amp.tuner.cents >= 0 ? '+' : '') + amp.tuner.cents.toFixed(1) + ' cents' : (amp.tuner.enabled ? 'no signal' : '')"></p>
+              <p class="sr-only" aria-live="polite" x-text="amp.tuner.enabled ? (amp.tuner.note >= 0 ? 'Note ' + amp.tuner.name : 'No signal') : 'Tuner off'"></p>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn btn-primary" @click="toggleTuner()" :disabled="!ready || amp.tuner.busy" :aria-pressed="amp.tuner.enabled.toString()" x-text="amp.tuner.enabled ? 'Disengage tuner' : 'Engage tuner'"></button>
+          </div>
+          <p class="muted small" x-show="amp.tuner.enabled && amp.tuner.onDevice">The tuner was switched on at the amp.</p>
+          <p class="muted small">Engaging the tuner sets a live DSP flag on the amp; it is not a stored setting.</p>
+        </section>
+
+        <!-- ============================================================ MOCK -->
+        <template x-if="amp.mode === 'mock'">
+          <section x-show="amp.ui.tab === 'mock'" aria-labelledby="h-mock" class="panel">
+            <h2 id="h-mock">Mock amp (developer panel)</h2>
+            <p class="muted small">These controls act on the <em>simulated amp</em>, as if you used its knobs and buttons. The app still sends no edits.</p>
+            <div class="grid-2">
+              <fieldset class="card" :disabled="!ready">
+                <legend>Amp controls</legend>
+                <label class="field">
+                  <span>Virtual knob</span>
+                  <select x-model="amp.mock.knob.key">
+                    <template x-for="k in knobs" :key="k.key"><option :value="k.key" x-text="k.label"></option></template>
+                  </select>
+                </label>
+                <template x-if="selectedKnob && selectedKnob.kind === 'bool'">
+                  <label class="field-inline"><input type="checkbox" :checked="!!selectedKnobValue" @change="mockKnobInput($event)" /> <span>Switch on the amp</span></label>
+                </template>
+                <template x-if="selectedKnob && selectedKnob.kind !== 'bool'">
+                  <label class="field">
+                    <span x-text="'Turn (' + selectedKnob.min + ' … ' + selectedKnob.max + ')'"></span>
+                    <input type="range" :min="selectedKnob.min" :max="selectedKnob.max" :step="selectedKnob.kind === 'int' ? 1 : (selectedKnob.max - selectedKnob.min) / 100" :value="selectedKnobValue" @input="mockKnobInput($event)" />
+                  </label>
+                </template>
+                <label class="field">
+                  <span>Master volume knob</span>
+                  <input type="range" min="0" max="1" step="0.01" :value="amp.mock.master" @input="mockMaster($event)" />
+                </label>
+                <div class="field">
+                  <label for="mock-preset">Preset on the amp</label>
+                  <div class="row">
+                    <select id="mock-preset" x-model.number="amp.mock.presetOnAmp">
+                      <template x-for="p in amp.presets" :key="p.index"><option :value="p.index" x-text="presetLabel(p.index) + ' ' + p.name"></option></template>
+                    </select>
+                    <button type="button" class="btn" @click="mockSelectPreset()">Select on amp</button>
+                    <button type="button" class="btn btn-ghost" @click="mockSaveOnAmp()" title="Simulates pressing save on the amp itself (amp-side)">Save on amp</button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="mock-bpm">Tap tempo</label>
+                  <div class="row">
+                    <input id="mock-bpm" type="number" min="30" max="240" step="1" x-model.number="amp.mock.tapBpm" />
+                    <button type="button" class="btn" @click="mockTap()">Tap</button>
+                  </div>
+                </div>
+                <div class="field">
+                  <span>Tuner button on the amp</span>
+                  <div class="row">
+                    <button type="button" class="btn" @click="mockTuner(true)">Tuner on</button>
+                    <button type="button" class="btn" @click="mockTuner(false)">Tuner off</button>
+                  </div>
+                </div>
+                <label class="field">
+                  <span x-text="'Guitar pitch: ' + amp.mock.tunerPitch.toFixed(2) + ' semitones above A'"></span>
+                  <input type="range" min="0" max="11.99" step="0.01" :value="amp.mock.tunerPitch" @input="mockPitch($event)" />
+                </label>
+                <div class="field">
+                  <span>Link faults (now)</span>
+                  <div class="row">
+                    <button type="button" class="btn btn-danger" @click="mockDropLink()">Drop the link</button>
+                    <button type="button" class="btn btn-danger" @click="mockGoSilent()">Amp goes silent</button>
+                  </div>
+                </div>
+              </fieldset>
+
+              <fieldset class="card" :disabled="busy || ready">
+                <legend>Next connection</legend>
+                <p class="muted small">Applied when you connect. Disconnect first to change them.</p>
+                <label class="field">
+                  <span>Firmware version</span>
+                  <select x-model="amp.mock.firmwareVersion">
+                    <option value="2.50.2">2.50.2 (MTU 240, 16 s timeout)</option>
+                    <option value="2.10.1">2.10.1 (threshold version)</option>
+                    <option value="2.00.6">2.00.6 (MTU 256, 4 s timeout)</option>
+                    <option value="1.00.0">1.00.0 (oldest accepted)</option>
+                    <option value="0.99.0">0.99.0 (refused: too old)</option>
+                  </select>
+                </label>
+                <label class="field-inline"><input type="checkbox" x-model="amp.mock.forceTableDownload" /> <span>Force symbol-table download</span></label>
+                <label class="field">
+                  <span x-text="'Drop rate: ' + (amp.mock.dropRate * 100).toFixed(1) + ' %'"></span>
+                  <input type="range" min="0" max="0.2" step="0.005" x-model.number="amp.mock.dropRate" />
+                </label>
+                <label class="field">
+                  <span x-text="'Chunking: ' + (amp.mock.chunkSize ? amp.mock.chunkSize + '-byte pieces' : 'off')"></span>
+                  <input type="range" min="0" max="64" step="1" x-model.number="amp.mock.chunkSize" />
+                </label>
+                <label class="field">
+                  <span x-text="'Latency: ' + amp.mock.latencyMs + ' ms'"></span>
+                  <input type="range" min="0" max="300" step="5" x-model.number="amp.mock.latencyMs" />
+                </label>
+              </fieldset>
+            </div>
+          </section>
+        </template>
+
+        <div class="mode-switch">
+          <button type="button" class="btn btn-ghost small" @click="switchMode()" x-text="amp.mode === 'mock' ? 'Leave mock mode' : 'Use the mock amp'"></button>
+          <span class="muted small" x-text="amp.metadata.present ? 'Model metadata: ' + amp.metadata.models + ' models (local, from your APK)' : 'Model metadata: none (raw symbols)'"></span>
+        </div>
+      </main>
+
+      <!-- ============================================================ LOG DRAWER -->
+      <aside id="log-drawer" class="drawer" x-show="amp.ui.logOpen" x-transition.opacity aria-label="Log">
+        <div class="drawer-head">
+          <div class="drawer-tabs" role="tablist">
+            <button type="button" role="tab" :aria-selected="(amp.ui.logTab === 'connection').toString()" @click="amp.ui.logTab = 'connection'">Connection</button>
+            <button type="button" role="tab" :aria-selected="(amp.ui.logTab === 'bytes').toString()" @click="amp.ui.logTab = 'bytes'">Bytes</button>
+          </div>
+          <div class="drawer-actions">
+            <label class="field-inline small"><input type="checkbox" :checked="amp.ui.hexEnabled" @change="setHex($event.target.checked)" /> <span>Byte log</span></label>
+            <label class="field-inline small" x-show="amp.ui.hexEnabled"><input type="checkbox" x-model="amp.ui.showKeepalives" /> <span>Keepalives</span></label>
+            <button type="button" class="btn btn-small" @click="copyLog()" x-text="copied ? 'Copied' : 'Copy log'"></button>
+            <button type="button" class="btn btn-small btn-ghost" @click="clearLogs()">Clear</button>
+            <button type="button" class="btn btn-small btn-ghost" @click="toggleLog()" aria-label="Close log">✕</button>
+          </div>
+        </div>
+        <div class="drawer-body" role="tabpanel" x-ref="logBody" @scroll="stick = $el.scrollTop + $el.clientHeight >= $el.scrollHeight - 24" x-effect="amp.log.length; amp.hexLog.length; amp.ui.logTab; amp.ui.logOpen; stick && $nextTick(() => ($el.scrollTop = $el.scrollHeight))">
+          <ol class="log" x-show="amp.ui.logTab === 'connection'">
+            <template x-for="e in visibleLog" :key="e.id">
+              <li :data-level="e.level"><time class="mono" x-text="new Date(e.t).toISOString().slice(11, 23)"></time> <span x-text="e.text"></span></li>
+            </template>
+          </ol>
+          <div x-show="amp.ui.logTab === 'bytes'">
+            <p class="muted small" x-show="!amp.ui.hexEnabled">Switch on “Byte log” to record tx/rx bytes, decoded per layer (IAP, RSMC frames, McBsp, stream segments).</p>
+            <ol class="log hexlog">
+              <template x-for="e in visibleHex" :key="e.id">
+                <li :data-dir="e.dir">
+                  <div><time class="mono" x-text="new Date(e.t).toISOString().slice(11, 23)"></time> <strong x-text="e.dir"></strong> <span class="muted" x-text="e.size + 'B'"></span> <code x-text="e.hex"></code></div>
+                  <template x-for="(l, i) in e.lines" :key="i"><div class="decoded" x-text="l"></div></template>
+                </li>
+              </template>
+            </ol>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

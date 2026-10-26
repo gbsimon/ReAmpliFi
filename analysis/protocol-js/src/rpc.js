@@ -99,6 +99,7 @@ export class RpcClient {
     stream.setDataHandler((bytes) => {
       try {
         this.parser.push(bytes);
+        this._reportProgress();
       } catch (e) {
         this._fatal(e);
       }
@@ -106,12 +107,26 @@ export class RpcClient {
   }
 
   /**
+   * Partial-response progress for the oldest pending request (long reads such as the
+   * symbol-table download): reports the bytes of a type-1 record received so far.
+   */
+  _reportProgress() {
+    const head = this.pending[0];
+    if (!head?.onProgress) return;
+    const buf = this.parser.buf;
+    if (buf.length < 8 || readU32(buf, 0) !== INBOUND.RESPONSE) return;
+    head.onProgress({ received: buf.length - 8, total: readU32(buf, 4) });
+  }
+
+  /**
    * Send `requestBytes` (already-encoded `u32 cmd, u32 len, payload`) and await the response body.
    * @param {Uint8Array} requestBytes
-   * @param {{timeoutMs?:number|null, label?:string, confirmWrite?:boolean}} [opts] timeoutMs null = wait forever
+   * @param {{timeoutMs?:number|null, label?:string, confirmWrite?:boolean, onProgress?:(p:{received:number,total:number})=>void}} [opts]
+   *        timeoutMs null = wait forever; onProgress is called while this request's response is
+   *        arriving (only once it is the oldest pending request)
    * @returns {Promise<Uint8Array>}
    */
-  request(requestBytes, { timeoutMs = DEFAULT_RPC_TIMEOUT_MS, label, confirmWrite } = {}) {
+  request(requestBytes, { timeoutMs = DEFAULT_RPC_TIMEOUT_MS, label, confirmWrite, onProgress } = {}) {
     if (this.closed) return Promise.reject(new AmpProtocolError(`${this.name}: client closed`));
     if (this.pending.length >= this.maxOutstanding) return Promise.reject(new AmpProtocolError(`${this.name}: too many outstanding requests`));
     const cmd = readU32(requestBytes, 0);
@@ -125,7 +140,7 @@ export class RpcClient {
       }
     }
     return new Promise((resolve, reject) => {
-      const entry = { cmd, label: label ?? `cmd ${cmd}`, resolve, reject, stale: false, timer: null };
+      const entry = { cmd, label: label ?? `cmd ${cmd}`, resolve, reject, stale: false, timer: null, onProgress };
       if (timeoutMs != null) {
         entry.timer = this.clock.setTimeout(() => {
           entry.stale = true;

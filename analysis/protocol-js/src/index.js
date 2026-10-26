@@ -15,6 +15,8 @@ export * from './symtab.js';
 export * from './mapping.js';
 export * from './presetBlob.js';
 export * from './deviceInfo.js';
+export * from './trace.js';
+export * from './transports/webSerial.js';
 export { AmpSession, Channel } from './session.js';
 export * as editor from './editor.js';
 export * as librarian from './librarian.js';

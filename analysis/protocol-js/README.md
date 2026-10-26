@@ -41,6 +41,8 @@ so everything can be tested without hardware. Written for interoperability with 
 | device info | 200-byte record, firmware version correction, MTU/heartbeat rule | `src/deviceInfo.js` |
 | guardrail | allow-list of streams, service modes, commands; storage-write confirmation; old-firmware refusal | `src/guard.js` |
 | session | `AmpSession`: whole connect sequence and high-level API | `src/session.js` |
+| transport | Web Serial over Bluetooth RFCOMM / SPP: picker, remembered ports, reader loop, link loss | `src/transports/webSerial.js` |
+| byte log | layer-decoded trace lines (IAP, RSMC, McBsp, stream) for UIs | `src/trace.js` |
 | time | `realClock`, deterministic `FakeClock` | `src/clock.js` |
 | mock | `MockAmp`, in-memory transport pair with latency/drop/chunking | `mock/` |
 
@@ -69,16 +71,32 @@ await amp.savePreset(3, amp.editBufferBlob, { confirmWrite: true }); // writes t
 await amp.disconnect();
 ```
 
-A Web Serial transport is a few lines (not included yet):
+Web Serial (Bluetooth SPP) transport:
 
 ```js
-const port = await navigator.serial.requestPort({ allowedBluetoothServiceClassIds: ['00001101-0000-1000-8000-00805f9b34fb'] });
-await port.open({ baudRate: 115200 });
-const writer = port.writable.getWriter();
-const listeners = new Set();
-(async () => { const r = port.readable.getReader(); for (;;) { const { value, done } = await r.read(); if (done) break; listeners.forEach((cb) => cb(value)); } })();
-const transport = { write: (b) => writer.write(b), onData: (cb) => (listeners.add(cb), () => listeners.delete(cb)), close: () => port.close() };
+import { WebSerialTransport, webSerialSupport, requestSppPort, getRememberedSppPorts } from './src/transports/webSerial.js';
+
+const support = webSerialSupport();             // { supported, reason, message }
+if (!support.supported) throw new Error(support.message);
+const port = (await getRememberedSppPorts())[0] ?? (await requestSppPort()); // picker needs a user gesture
+const transport = new WebSerialTransport(port);  // { write, onData, close, onClose }
+await transport.open();                          // baudRate 115200 (ignored by RFCOMM)
+const amp = new AmpSession(transport, { readOnly: true });
 ```
+
+`onClose` fires with `{ reason }`: `closed`, `disconnected` (desktop Chrome 130+ event),
+`read-error` (the Android link-loss signal), `write-error` or `ended`.
+
+Read-side API for UIs (P1):
+
+- events `state`, `phase` (`sync`, `deviceInfo`, `channel`, `handshake`,
+  `tableDownload {received, total}`, `librarian`, `editBuffer`, `tuner`, `ready`), `command`
+  (every request that passed the guard, with `writesStorage`), `editBuffer`, `disconnect`
+  (`reason: 'error'` on link loss or heartbeat timeout, once);
+- `getPresetNames({ onProgress })`, `getEditBufferParams()`, `summary`, `currentPresetIndex`
+  (null until a patch event);
+- `{ readOnly: true }` refuses param edits, preset loads and storage writes with `ReadOnlyError`
+  before anything is encoded; tuner engage / disengage stays allowed.
 
 No Line 6 asset is needed to run the library against the mock. For a real amp, the session
 handshakes with the bundled table if you pass one; otherwise (or if the amp rejects it) it
@@ -138,7 +156,7 @@ by `RpcClient` on the encoded bytes:
   `{ confirmWrite: true }`; anything else (e.g. librarian 13) throws;
 - an amp reporting firmware < 0x01000000 is refused (the official app would force an update).
 
-`test/guard.test.js` also scans `src/` and fails if `update|flash|dfu|updater` appears in an
+`test/guard.test.js` also scans `src/` (recursively) and fails if `update|flash|dfu|updater` appears in an
 identifier outside `guard.js`.
 
 ## Implementation notes worth knowing
@@ -158,12 +176,18 @@ identifier outside `guard.js`.
 - FIFO responses have no transaction id; a timed-out request keeps its slot so a late reply is
   discarded instead of being matched to the next request.
 
+## Tools
+
+- `tools/gen-metadata.js`: slim model metadata (display names, categories, param ranges) from
+  your own APK (`--apk <file>`, uses the system `unzip`) or an extracted assets folder
+  (`--assets <dir>`, default `../work/apktool/assets`). Writes `app/src/generated/metadata.json`,
+  which is gitignored. Never commit its output.
+
 ## Next steps (from PLAN.md, not built yet)
 
 - `tools/btsnoop.js`: turn an Android HCI snoop capture into `{t, dir, hex}` RFCOMM chunks.
 - `ReplayTransport`: replay amp→phone bytes from a capture and assert our phone→amp bytes.
 - `WebSocketBridgeTransport`: binary WebSocket relay for devices without Web Serial (iPhone).
-- A Web Serial transport module and the PWA itself.
 
 ## Contents and licensing
 
