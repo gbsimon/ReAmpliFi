@@ -1,0 +1,20 @@
+# Line 6 files: never commit (APK, decompiled code, extracted assets, derived dumps)
+*.apk
+*.xapk
+analysis/work/
+analysis/notes/test_vectors.local.json
+
+# Line 6 asset types, in case any get copied outside analysis/work/
+*.models
+*.l6p
+defaultSymbolTable*.bin
+default_preset*.json
+*Catalog.json
+Demo.zip
+*.mp3
+
+# Tooling
+__pycache__/
+*.pyc
+node_modules/
+.DS_Store

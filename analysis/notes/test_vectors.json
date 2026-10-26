@@ -1,0 +1,777 @@
+{
+  "description": "Application-layer (service RPC) payload test vectors for AMPLIFi 150. Each payload_hex = u32 cmd/type LE + u32 len LE + body, as written to/read from the editor (0x2002<->0x03ED) or librarian (0x2003<->0x03EF) service stream. No McBsp/stream/RSMC framing or CRC16. Symbol indices come from assets/defaultSymbolTable.bin (CRC32 b68b291e). Vectors derived from Line 6 asset files (default_preset.json blobs) live in test_vectors.local.json, which is not committed; regenerate with scripts/app_messages.py.",
+  "generator": "analysis/scripts/app_messages.py",
+  "vectors": [
+    {
+      "name": "editor_get_version",
+      "request_type": "GetVersion",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {},
+      "payload_hex": "0100000000000000",
+      "source_function": "ToneMatchEdit_Remote::GetVersion",
+      "address": "0x001039d2",
+      "status": "CONFIRMED",
+      "note": "response body: u32 version, no status"
+    },
+    {
+      "name": "editor_handshake_default_table",
+      "request_type": "Handshake",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "crc32": "b68b291e"
+      },
+      "payload_hex": "04000000040000001e298bb6",
+      "source_function": "ToneMatchEdit_Remote::Handshake",
+      "address": "0x00103bac",
+      "status": "CONFIRMED",
+      "note": "payload = CRC32 (zlib) of the whole defaultSymbolTable.bin; response i32 status (>=0 ok)"
+    },
+    {
+      "name": "editor_get_symtab_size",
+      "request_type": "GetSymbolTableSize",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {},
+      "payload_hex": "0200000000000000",
+      "source_function": "ToneMatchEdit_Remote::GetSymbolTableSize",
+      "address": "0x00103a6e",
+      "status": "CONFIRMED"
+    },
+    {
+      "name": "editor_get_symtab",
+      "request_type": "GetSymbolTable",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {},
+      "payload_hex": "0300000000000000",
+      "source_function": "ToneMatchEdit_Remote::GetSymbolTable",
+      "address": "0x00103b0a",
+      "status": "CONFIRMED",
+      "note": "response body = raw symbol table, same format as defaultSymbolTable.bin; no timeout"
+    },
+    {
+      "name": "set_param_amp_Drive_0.5",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "amp",
+        "param": "Drive",
+        "value": 0.5,
+        "model": "BritGainJ800",
+        "dsp_slot": "Amp",
+        "dsp_param": "Drive",
+        "slot_idx": 535,
+        "param_idx": 23
+      },
+      "payload_hex": "0a000000100000001702000017000000040000000000003f",
+      "source_function": "A36EditBufferContext::sendParamToDevice -> FSIEditor::SetToneMatchModelParam -> ToneMatchEdit_Remote::SetModelParamCommon",
+      "address": "0x000daa7a/0x000ecc98/0x0010403e",
+      "status": "CONFIRMED (layout, mapping, value typing); indices INFERRED-valid",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "set_param_amp_Bass_0.25",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "amp",
+        "param": "Bass",
+        "value": 0.25,
+        "model": "BritGainJ800",
+        "dsp_slot": "Amp",
+        "dsp_param": "Bass",
+        "slot_idx": 535,
+        "param_idx": 17
+      },
+      "payload_hex": "0a000000100000001702000011000000040000000000803e",
+      "source_function": "A36EditBufferContext::sendParamToDevice -> FSIEditor::SetToneMatchModelParam -> ToneMatchEdit_Remote::SetModelParamCommon",
+      "address": "0x000daa7a/0x000ecc98/0x0010403e",
+      "status": "CONFIRMED (layout, mapping, value typing); indices INFERRED-valid",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "set_param_amp_volume_0.75",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "amp",
+        "param": "@volume",
+        "value": 0.75,
+        "model": "BritGainJ800",
+        "dsp_slot": "GuitarProc",
+        "dsp_param": "ChannelVolume",
+        "slot_idx": 596,
+        "param_idx": 540
+      },
+      "payload_hex": "0a00000010000000540200001c020000040000000000403f",
+      "source_function": "A36EditBufferContext::sendParamToDevice -> FSIEditor::SetToneMatchModelParam -> ToneMatchEdit_Remote::SetModelParamCommon",
+      "address": "0x000daa7a/0x000ecc98/0x0010403e",
+      "status": "CONFIRMED (layout, mapping, value typing); indices INFERRED-valid",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "set_param_fx1_enabled_true",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "fx1",
+        "param": "@enabled",
+        "value": true,
+        "model": null,
+        "dsp_slot": "GuitarProc",
+        "dsp_param": "FX1Enable",
+        "slot_idx": 596,
+        "param_idx": 576
+      },
+      "payload_hex": "0a0000001000000054020000400200000300000001000000",
+      "source_function": "A36EditBufferContext::sendParamToDevice -> FSIEditor::SetToneMatchModelParam -> ToneMatchEdit_Remote::SetModelParamCommon",
+      "address": "0x000daa7a/0x000ecc98/0x0010403e",
+      "status": "CONFIRMED (layout, mapping, value typing); indices INFERRED-valid",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "set_param_fx1_enabled_false",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "fx1",
+        "param": "@enabled",
+        "value": false,
+        "model": null,
+        "dsp_slot": "GuitarProc",
+        "dsp_param": "FX1Enable",
+        "slot_idx": 596,
+        "param_idx": 576
+      },
+      "payload_hex": "0a0000001000000054020000400200000300000000000000",
+      "source_function": "A36EditBufferContext::sendParamToDevice -> FSIEditor::SetToneMatchModelParam -> ToneMatchEdit_Remote::SetModelParamCommon",
+      "address": "0x000daa7a/0x000ecc98/0x0010403e",
+      "status": "CONFIRMED (layout, mapping, value typing); indices INFERRED-valid",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "set_param_reverb_mix_0.33",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "reverb",
+        "param": "@mix",
+        "value": 0.33,
+        "model": "DarkHall1",
+        "dsp_slot": "GuitarProc",
+        "dsp_param": "FX4Mix",
+        "slot_idx": 596,
+        "param_idx": 534
+      },
+      "payload_hex": "0a00000010000000540200001602000004000000c3f5a83e",
+      "source_function": "A36EditBufferContext::sendParamToDevice -> FSIEditor::SetToneMatchModelParam -> ToneMatchEdit_Remote::SetModelParamCommon",
+      "address": "0x000daa7a/0x000ecc98/0x0010403e",
+      "status": "CONFIRMED (layout, mapping, value typing); indices INFERRED-valid",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "set_param_reverb_post_true",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "reverb",
+        "param": "@post",
+        "value": true,
+        "model": "DarkHall1",
+        "dsp_slot": "GuitarProc",
+        "dsp_param": "FX4Post",
+        "slot_idx": 596,
+        "param_idx": 571
+      },
+      "payload_hex": "0a00000010000000540200003b0200000300000001000000",
+      "source_function": "A36EditBufferContext::sendParamToDevice -> FSIEditor::SetToneMatchModelParam -> ToneMatchEdit_Remote::SetModelParamCommon",
+      "address": "0x000daa7a/0x000ecc98/0x0010403e",
+      "status": "CONFIRMED (layout, mapping, value typing); indices INFERRED-valid",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "set_param_cab_Level_0.5",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "cab",
+        "param": "Level",
+        "value": 0.5,
+        "model": "4x12BritT75Studio",
+        "dsp_slot": "Air",
+        "dsp_param": "Level",
+        "slot_idx": 536,
+        "param_idx": 10
+      },
+      "payload_hex": "0a00000010000000180200000a000000040000000000003f",
+      "source_function": "A36EditBufferContext::sendParamToDevice -> FSIEditor::SetToneMatchModelParam -> ToneMatchEdit_Remote::SetModelParamCommon",
+      "address": "0x000daa7a/0x000ecc98/0x0010403e",
+      "status": "CONFIRMED (layout, mapping, value typing); indices INFERRED-valid",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "set_param_reverb_Decay_1.5",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "reverb",
+        "param": "Decay",
+        "value": 1.5,
+        "model": "DarkHall1",
+        "dsp_slot": "FX4",
+        "dsp_param": "Decay",
+        "slot_idx": 533,
+        "param_idx": 232
+      },
+      "payload_hex": "0a0000001000000015020000e8000000040000000000803f",
+      "source_function": "A36EditBufferContext::sendParamToDevice -> FSIEditor::SetToneMatchModelParam -> ToneMatchEdit_Remote::SetModelParamCommon",
+      "address": "0x000daa7a/0x000ecc98/0x0010403e",
+      "status": "CONFIRMED (layout, mapping, value typing); indices INFERRED-valid",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC; value clamped to model max"
+    },
+    {
+      "name": "set_param_fx2_temposync_false",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "fx2",
+        "param": "@temposync",
+        "value": false
+      },
+      "payload_hex": "0a0000001000000011020000920000000200000000000000",
+      "source_function": "A36EditBufferContext::sendParamToDevice",
+      "address": "0x000daa7a",
+      "status": "CONFIRMED",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "set_param_fx2_SyncSelect_4",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "fx2",
+        "param": "SyncSelect",
+        "value": 4
+      },
+      "payload_hex": "0a0000001000000011020000920000000200000004000000",
+      "source_function": "A36EditBufferContext::sendParamToDevice",
+      "address": "0x000daa7a",
+      "status": "CONFIRMED",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "cab_mic_change_to_421",
+      "request_type": "LoadDspModel",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "cab",
+        "param": "@mic",
+        "value": 2,
+        "cab": "4x12BritT75Studio"
+      },
+      "payload_hex": "08000000080000001a020000d7010000",
+      "source_function": "sendParamToDevice -> CabModelAndMicToStudioCabSymbol -> setToneMatchModel -> LoadDspModel",
+      "address": "0x000daa7a/0x00108b88/0x00103e86",
+      "status": "CONFIRMED",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "global_tempo_120",
+      "request_type": "SetGlobalTempo",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "global",
+        "param": "@tempo",
+        "value": 120.0
+      },
+      "payload_hex": "0e000000040000000000f042",
+      "source_function": "ToneMatchEdit_Remote::SetGlobalTempo",
+      "address": "0x001054aa",
+      "status": "CONFIRMED",
+      "note": "float32 BPM, 30..240"
+    },
+    {
+      "name": "global_tweakmin_0.2",
+      "request_type": "SetPresetPSKeyParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "global",
+        "param": "@tweakmin",
+        "value": 0.2
+      },
+      "payload_hex": "130000000c0000000700000004000000cdcc4c3e",
+      "source_function": "ToneMatchEdit_Remote::SetPresetPSKeyParam",
+      "address": "0x00105980",
+      "status": "CONFIRMED",
+      "note": "only sent when fw >= 0x02110300 on AMPLIFi (FUN_001084fb)"
+    },
+    {
+      "name": "global_pedal2assign_true",
+      "request_type": "SetPresetPSKeyParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "group": "global",
+        "param": "@pedal2assign",
+        "value": true
+      },
+      "payload_hex": "130000000c000000090000000300000001000000",
+      "source_function": "ToneMatchEdit_Remote::SetPresetPSKeyParam",
+      "address": "0x00105980",
+      "status": "CONFIRMED",
+      "note": "fw gate as above"
+    },
+    {
+      "name": "tweak_bind_amp_Drive",
+      "request_type": "BindTweakParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "tweakgroup": "amp",
+        "tweakparam": "Drive"
+      },
+      "payload_hex": "0d000000080000001702000017000000",
+      "source_function": "A36EditBufferContext::bindTweakOnDeviceForGroup -> BindTweakParam",
+      "address": "0x000dbd1c/0x001053e0",
+      "status": "CONFIRMED",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC; 1000 ms timeout"
+    },
+    {
+      "name": "device_setting_Master_0.5",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "setting": "Master",
+        "value": 0.5
+      },
+      "payload_hex": "0a00000010000000ffffffff60020000040000000000003f",
+      "source_function": "A36EditorLibrarian::setDeviceSetting -> setToneMatchModelParam(\"Master\",\"\")",
+      "address": "0x000e15ac",
+      "status": "CONFIRMED (slot \"\" -> 0xFFFFFFFF root slot); value range INFERRED 0..1",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "device_setting_GuitOutputGain_0.8",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "setting": "GuitOutputGain",
+        "value": 0.8
+      },
+      "payload_hex": "0a00000010000000ffffffff6202000004000000cdcc4c3f",
+      "source_function": "A36EditorLibrarian::setDeviceSetting",
+      "address": "0x000e15ac",
+      "status": "CONFIRMED; range INFERRED",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "device_setting_TapTempoLED_true",
+      "request_type": "SetPersistentSysParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "setting": "TapTempoLED",
+        "value": true
+      },
+      "payload_hex": "120000000c000000070000000300000001000000",
+      "source_function": "A36EditorLibrarian::setDeviceSetting -> FSIEditor::SetPersistentSysParam -> SetPersistentSysParam",
+      "address": "0x000e15ac/0x000edd58/0x00105768",
+      "status": "CONFIRMED",
+      "note": "key 7; AMPLIFi gate fw >= 0x02000600 (FUN_001084af); Java Boolean -> TV_BOOL"
+    },
+    {
+      "name": "get_Master",
+      "request_type": "GetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "setting": "Master"
+      },
+      "payload_hex": "0900000008000000ffffffff60020000",
+      "source_function": "A36EditorLibrarian::getDeviceSetting -> GetDspModelParam",
+      "address": "0x000e192c/0x00103f50",
+      "status": "CONFIRMED",
+      "note": "response: i32 status, TV"
+    },
+    {
+      "name": "get_FBVConnected",
+      "request_type": "GetFbvConnectivityStatus",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {},
+      "payload_hex": "1000000000000000",
+      "source_function": "ToneMatchEdit_Remote::GetFbvConnectivityStatus",
+      "address": "0x001055f4",
+      "status": "CONFIRMED",
+      "note": "response: u32 (no status)"
+    },
+    {
+      "name": "get_dirty_state",
+      "request_type": "GetDirtyState",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {},
+      "payload_hex": "0f00000000000000",
+      "source_function": "ToneMatchEdit_Remote::GetDirtyState",
+      "address": "0x00105558",
+      "status": "CONFIRMED",
+      "note": "response: u32 (no status)"
+    },
+    {
+      "name": "tuner_query_state",
+      "request_type": "GetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "slot": "Tuner",
+        "param": "Enable"
+      },
+      "payload_hex": "09000000080000004b02000051020000",
+      "source_function": "A36EditorLibrarian::handleNotification (on connect)",
+      "address": "0x000df576",
+      "status": "CONFIRMED",
+      "note": "symbol indices from defaultSymbolTable.bin; valid only if the amp accepted Handshake with this table CRC"
+    },
+    {
+      "name": "tuner_engage",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "engage": true
+      },
+      "payload_hex": "0a000000100000004b020000510200000200000001000000",
+      "source_function": "A36EditorLibrarian::engageTunerInternal",
+      "address": "0x000e7240",
+      "status": "CONFIRMED",
+      "note": "L6Variant(uint) -> TV_INT 1 (not BOOL); synchronous"
+    },
+    {
+      "name": "tuner_register_note_events",
+      "request_type": "RegisterDspEvent",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "slot": "Tuner",
+        "param": "Note"
+      },
+      "payload_hex": "0b000000080000004b02000052020000",
+      "source_function": "ToneMatchEditorService::registerToneMatchTunerEvent -> RegisterDspEvent",
+      "address": "0x00108eba/0x00104ef6",
+      "status": "CONFIRMED",
+      "note": "sent after engage succeeded"
+    },
+    {
+      "name": "tuner_disengage",
+      "request_type": "SetDspModelParam",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {
+        "engage": false
+      },
+      "payload_hex": "0a000000100000004b020000510200000200000000000000",
+      "source_function": "A36EditorLibrarian::engageTunerInternal",
+      "address": "0x000e7240",
+      "status": "CONFIRMED",
+      "note": "followed by UnregisterDspEvent"
+    },
+    {
+      "name": "tuner_unregister_note_events",
+      "request_type": "UnregisterDspEvent",
+      "direction": "out",
+      "service": "editor",
+      "inputs": {},
+      "payload_hex": "0c000000080000004b02000052020000",
+      "source_function": "ToneMatchEdit_Remote::UnregisterDspEvent",
+      "address": "0x0010519c",
+      "status": "CONFIRMED"
+    },
+    {
+      "name": "in_tuner_note_event",
+      "request_type": "DSP event (type 2)",
+      "direction": "in",
+      "service": "editor",
+      "inputs": {
+        "value": 2.1,
+        "expected_note": 2,
+        "expected_cents": 10.0
+      },
+      "payload_hex": "02000000100000004b020000520200000400000066660640",
+      "source_function": "ToneMatchEdit_Remote::HandleEvent -> handleTunerEvent -> convertA36TunerValueToNoteCents",
+      "address": "0x001066e2/0x00109b52/0x000ea729",
+      "status": "CONFIRMED (layout+math); amp-side value semantics INFERRED"
+    },
+    {
+      "name": "in_param_event_amp_drive",
+      "request_type": "param event (type 4)",
+      "direction": "in",
+      "service": "editor",
+      "inputs": {
+        "slot": "Amp",
+        "param": "Drive",
+        "value": 0.7,
+        "notification": "EditBuffer_ParamChanged{groupID:amp,paramID:Drive,value:0.7,onDevice:true}"
+      },
+      "payload_hex": "04000000100000001702000017000000040000003333333f",
+      "source_function": "HandleParamEvent -> handleParamEvent -> consumeParamEvent",
+      "address": "0x00106826/0x00109c86/0x000d3dfa",
+      "status": "CONFIRMED"
+    },
+    {
+      "name": "in_param_event_master",
+      "request_type": "param event (type 4), root slot",
+      "direction": "in",
+      "service": "editor",
+      "inputs": {
+        "slot": 4294967295,
+        "param": "Master",
+        "value": 0.4,
+        "notification": "Device_SettingChanged{setting:Master,value:0.4,onDevice:true}"
+      },
+      "payload_hex": "0400000010000000ffffffff6002000004000000cdcccc3e",
+      "source_function": "handleParamEvent -> consumeRootSlotParamEvent",
+      "address": "0x00109c86/0x000d405a",
+      "status": "CONFIRMED"
+    },
+    {
+      "name": "in_patch_event_select_5",
+      "request_type": "patch event (type 3)",
+      "direction": "in",
+      "service": "editor",
+      "inputs": {
+        "preset_index": 5,
+        "is_save": 0,
+        "notification": "EditBuffer_DevicePresetChanged{presetIndex:5,onDevice:true}"
+      },
+      "payload_hex": "030000001000000002000000050000000200000000000000",
+      "source_function": "HandlePatchEvent -> handlePatchEvent -> consumePatchEvent",
+      "address": "0x0010678a/0x00109bc4/0x000d433c",
+      "status": "CONFIRMED"
+    },
+    {
+      "name": "in_tap_tempo_event",
+      "request_type": "tap tempo event (type 5)",
+      "direction": "in",
+      "service": "editor",
+      "inputs": {
+        "bpm": 120.0
+      },
+      "payload_hex": "0500000008000000040000000000f042",
+      "source_function": "HandleTapTempoEvent -> handleTapTempoEvent -> consumeTapTempoEvent",
+      "address": "0x001068ce/0x0010a054/0x000d4248",
+      "status": "CONFIRMED",
+      "note": "value must be TV_FLOAT; sets global/@tempo"
+    },
+    {
+      "name": "in_fbv_connected",
+      "request_type": "FBV status event (type 6)",
+      "direction": "in",
+      "service": "editor",
+      "inputs": {
+        "connected": true
+      },
+      "payload_hex": "0600000008000000040000000000803f",
+      "source_function": "handleFbvStatusEvent",
+      "address": "0x0010a0ca",
+      "status": "CONFIRMED",
+      "note": "float > 0 = connected"
+    },
+    {
+      "name": "in_response_status_ok",
+      "request_type": "response (type 1)",
+      "direction": "in",
+      "service": "editor",
+      "inputs": {
+        "status": 0
+      },
+      "payload_hex": "010000000400000000000000",
+      "source_function": "ToneMatchEdit_Remote::HandleResponse",
+      "address": "0x001064d8",
+      "status": "CONFIRMED",
+      "note": "FIFO-matched to oldest pending request"
+    },
+    {
+      "name": "lib_get_num_presets",
+      "request_type": "GetNumPresets",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {},
+      "payload_hex": "0500000000000000",
+      "source_function": "ToneMatchLibrarian_Remote::GetNumPresets",
+      "address": "0x0010b95e",
+      "status": "CONFIRMED",
+      "note": "response: u32 count, NO status word"
+    },
+    {
+      "name": "lib_handshake_default_table",
+      "request_type": "Handshake",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "crc32": "b68b291e"
+      },
+      "payload_hex": "04000000040000001e298bb6",
+      "source_function": "ToneMatchLibrarian_Remote::Handshake",
+      "address": "0x0010b884",
+      "status": "CONFIRMED"
+    },
+    {
+      "name": "lib_get_preset_name_0",
+      "request_type": "GetPresetName",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "index": 0
+      },
+      "payload_hex": "060000000400000000000000",
+      "source_function": "ToneMatchLibrarian_Remote::GetPresetName",
+      "address": "0x0010ba0e",
+      "status": "CONFIRMED",
+      "note": "response: i32 status, u32 nameLen, char[nameLen<=64]"
+    },
+    {
+      "name": "lib_get_preset_name_5",
+      "request_type": "GetPresetName",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "index": 5
+      },
+      "payload_hex": "060000000400000005000000",
+      "source_function": "ToneMatchLibrarian_Remote::GetPresetName",
+      "address": "0x0010ba0e",
+      "status": "CONFIRMED",
+      "note": "response: i32 status, u32 nameLen, char[nameLen<=64]"
+    },
+    {
+      "name": "select_preset_0_step1_get",
+      "request_type": "GetPresetFile",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "index": 0
+      },
+      "payload_hex": "0b0000000400000000000000",
+      "source_function": "A36EditBufferContext::loadPresetFromDevice -> GetPresetFile",
+      "address": "0x000d5444/0x0010be42",
+      "status": "CONFIRMED",
+      "note": "response: i32 status, blob (len-4 bytes, <=0x8000)"
+    },
+    {
+      "name": "select_preset_5_step1_get",
+      "request_type": "GetPresetFile",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "index": 5
+      },
+      "payload_hex": "0b0000000400000005000000",
+      "source_function": "A36EditBufferContext::loadPresetFromDevice -> GetPresetFile",
+      "address": "0x000d5444/0x0010be42",
+      "status": "CONFIRMED",
+      "note": "response: i32 status, blob (len-4 bytes, <=0x8000)"
+    },
+    {
+      "name": "select_preset_step2_put_editbuffer",
+      "request_type": "SetPresetFile",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "index": "EDIT_BUFFER(0xFFFFFFFF)",
+        "blob": "raw bytes from step1 (L bytes)"
+      },
+      "payload_hex": "0c000000<u32 8+L>ffffffff<u32 L><blob>",
+      "source_function": "loadPresetFromDevice -> SetPresetFile",
+      "address": "0x000d5444/0x0010bf12",
+      "status": "CONFIRMED"
+    },
+    {
+      "name": "save_to_slot_3",
+      "request_type": "SetPresetFile",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "index": 3,
+        "blob": "full-tone blob (preset_blob.py)"
+      },
+      "payload_hex": "0c000000<u32 8+L>03000000<u32 L><blob>",
+      "source_function": "savePresetToDevice -> SetPresetFile",
+      "address": "0x000d5796/0x0010bf12",
+      "status": "CONFIRMED"
+    },
+    {
+      "name": "lib_move_src1_dst4",
+      "request_type": "MovePresetFiles",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "src": 1,
+        "dst": 4
+      },
+      "payload_hex": "09000000080000000400000001000000",
+      "source_function": "A36EditorLibrarian::moveResource -> MovePresetFiles",
+      "address": "0x000e5e46/0x0010bcb4",
+      "status": "CONFIRMED order (dst first); amp semantics INFERRED (insert/move)"
+    },
+    {
+      "name": "lib_get_preset_info_0",
+      "request_type": "GetPresetInfo",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "index": 0
+      },
+      "payload_hex": "0e0000000400000000000000",
+      "source_function": "ToneMatchLibrarian_Remote::GetPresetInfo",
+      "address": "0x0010c0d4",
+      "status": "CONFIRMED",
+      "note": "response: i32 status, u64 uuid, u32 checksum, u32 size, u32 nameLen, char[64]"
+    },
+    {
+      "name": "lib_get_editbuffer",
+      "request_type": "GetPresetFile",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "index": "EDIT_BUFFER"
+      },
+      "payload_hex": "0b00000004000000ffffffff",
+      "source_function": "syncWithDeviceAsMaster(true) -> getToneMatchPreset(-1)",
+      "address": "0x000da514",
+      "status": "CONFIRMED",
+      "note": "read current edit buffer after connect"
+    },
+    {
+      "name": "load_tone_json_editbuffer",
+      "request_type": "SetPresetFile",
+      "direction": "out",
+      "service": "librarian",
+      "inputs": {
+        "index": "EDIT_BUFFER",
+        "blob": "preset_blob_default_preset_Preset"
+      },
+      "payload_hex": "0c000000c2040000ffffffffba040000<blob>",
+      "source_function": "loadEditBufferFromDataBuffer -> loadPresetFromFile -> syncWithDeviceAsMaster(false)",
+      "address": "0x000e4578/0x000d4ee8/0x000da514",
+      "status": "CONFIRMED envelope; blob INFERRED"
+    }
+  ]
+}
